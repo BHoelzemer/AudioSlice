@@ -18,6 +18,8 @@ namespace AudioSlicer
         List<byte> overflowBytes;
         int overflowTime;
         int counter;
+        int digits;
+
 
         ProgressBar progessBar;
         Mp3FileReader.FrameDecompressorBuilder builder = new Mp3FileReader.FrameDecompressorBuilder(wf => new Mp3FrameDecompressor(wf));
@@ -25,34 +27,51 @@ namespace AudioSlicer
 
         public AudioSlice(List<string> mp3Files, string destinationFolder, ProgressBar progessBar)
         {
-            InitProgessbar(mp3Files, progessBar);
+            InitProgessbar(mp3Files.Count, progessBar);
             paths = mp3Files;
             destinationPath = destinationFolder;
+            var totalTime = 0;
+            foreach (var mp3File in mp3Files)
+            {
+                totalTime += GetFileTime(mp3File);
+                progessBar.PerformStep();
+            }
+            var progressCount = totalTime / (interval / 60);
+            digits = progressCount.Digits();
+            InitProgessbar(progressCount, progessBar);
             foreach (var mp3File in mp3Files)
             {
                 Slice(mp3File);
-                progessBar.PerformStep();
+
             }
+            GetLastPart(filestream);
             filestream?.Close();
         }
 
-        private void InitProgessbar(List<string> mp3Files, ProgressBar progessBar)
+        private int GetFileTime(string mp3File)
+        {
+            int result;
+            using (var reader = new Mp3FileReader(mp3File, builder))
+            {
+                result = reader.TotalTime.Seconds;
+            }
+            return result;
+        }
+
+        private void InitProgessbar(int maximum, ProgressBar progessBar)
         {
             this.progessBar = progessBar;
             progessBar.Visible = true;
             progessBar.Minimum = 1;
-            progessBar.Maximum = mp3Files.Count;
+            progessBar.Maximum = maximum;
             progessBar.Value = 1;
             progessBar.Step = 1;
         }
 
         void Slice(string path)
         {
-            var mp3Dir = Path.GetDirectoryName(path);
-            var splitDir = Path.Combine(mp3Dir, Path.GetFileNameWithoutExtension(path));
             try
             {
-
                 using (var reader = new Mp3FileReader(path, builder))
                 {
                     Mp3Frame frame;
@@ -89,6 +108,8 @@ namespace AudioSlicer
                                     filestream?.Dispose();
                                     CreateWriter();
                                     timeOfLastCut = (int)reader.CurrentTime.TotalSeconds + restOffset;
+                                    //one File Finished
+                                    progessBar.PerformStep();
                                 }
 
                                 filestream.Write(frame.RawData, 0, frame.RawData.Length);
@@ -109,7 +130,7 @@ namespace AudioSlicer
         {
             filestream?.Close();
             //todo calculate the numbers of files to determine a better format
-            filestream = File.Open(Path.Combine(destinationPath, $"{(++counter).ToString("D4")}.mp3"), FileMode.OpenOrCreate);
+            filestream = File.Open(Path.Combine(destinationPath, $"{(++counter).ToString($"D{digits}")}.mp3"), FileMode.OpenOrCreate);
         }
 
         private int GetLastPart(FileStream writer)
@@ -123,6 +144,8 @@ namespace AudioSlicer
             }
             return result;
         }
+
+
 
     }
 }
