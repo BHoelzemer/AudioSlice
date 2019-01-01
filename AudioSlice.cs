@@ -2,11 +2,9 @@
 using NLayer.NAudioSupport;
 using System;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Windows.Forms;
+using System.Threading;
 
 namespace AudioSlicer
 {
@@ -19,33 +17,49 @@ namespace AudioSlicer
         int overflowTime;
         int counter;
         int digits;
-
+        Label infoLabel;
+        int maximum;
 
         ProgressBar progessBar;
         Mp3FileReader.FrameDecompressorBuilder builder = new Mp3FileReader.FrameDecompressorBuilder(wf => new Mp3FrameDecompressor(wf));
         FileStream filestream;
 
-        public AudioSlice(List<string> mp3Files, string destinationFolder, ProgressBar progessBar)
+        public AudioSlice(List<string> mp3Files, string destinationFolder, ProgressBar progressBar, Label info, int interval)
         {
-            InitProgessbar(mp3Files.Count, progessBar);
-            paths = mp3Files;
-            destinationPath = destinationFolder;
-            var totalTime = 0;
-            foreach (var mp3File in mp3Files)
+            InitProgessbar(mp3Files.Count, progressBar);
+            new Thread(() =>
             {
-                totalTime += GetFileTime(mp3File);
-                progessBar.PerformStep();
-            }
-            var progressCount = totalTime / (interval / 60);
-            digits = progressCount.Digits();
-            InitProgessbar(progressCount, progessBar);
-            foreach (var mp3File in mp3Files)
-            {
-                Slice(mp3File);
+                try
+                {
+                    this.interval = interval * 60;
+                    paths = mp3Files;
+                    destinationPath = destinationFolder;
+                    var totalTime = 0;
+                    infoLabel = info;
+                    foreach (var mp3File in mp3Files)
+                    {
+                        totalTime += GetFileTime(mp3File);
+                        progessBar.InvokeIfRequired(() => { progessBar.PerformStep(); });
+                        var percent = (((float)progressBar.Value / (float)progressBar.Maximum) * 100).ToString("0.##");
+                        infoLabel.InvokeIfRequired(() => { infoLabel.Text = $"Calculating output Count: {percent}%"; });
+                    }
+                    maximum = totalTime / (this.interval);
+                    digits = maximum.Digits();
+                    InitProgessbar(maximum, progressBar);
+                    foreach (var mp3File in mp3Files)
+                    {
+                        Slice(mp3File);
 
-            }
-            GetLastPart(filestream);
-            filestream?.Close();
+                    }
+                    GetLastPart(filestream);
+                    filestream?.Close();
+                    infoLabel.InvokeIfRequired(() => { infoLabel.Text = "finished"; });
+                }
+                catch (Exception e)
+                {
+                    throw e;
+                }
+            }).Start();
         }
 
         private int GetFileTime(string mp3File)
@@ -53,19 +67,23 @@ namespace AudioSlicer
             int result;
             using (var reader = new Mp3FileReader(mp3File, builder))
             {
-                result = reader.TotalTime.Seconds;
+                result = (int)reader.TotalTime.TotalSeconds;
             }
             return result;
         }
 
         private void InitProgessbar(int maximum, ProgressBar progessBar)
         {
-            this.progessBar = progessBar;
-            progessBar.Visible = true;
-            progessBar.Minimum = 1;
-            progessBar.Maximum = maximum;
-            progessBar.Value = 1;
-            progessBar.Step = 1;
+            progessBar.InvokeIfRequired(() =>
+            {
+                this.progessBar = progessBar;
+                this.progessBar.Visible = true;
+                this.progessBar.Minimum = 1;
+                this.progessBar.Maximum = maximum;
+                this.progessBar.Value = 1;
+                this.progessBar.Step = 1;
+            });
+
         }
 
         void Slice(string path)
@@ -109,7 +127,7 @@ namespace AudioSlicer
                                     CreateWriter();
                                     timeOfLastCut = (int)reader.CurrentTime.TotalSeconds + restOffset;
                                     //one File Finished
-                                    progessBar.PerformStep();
+                                    progessBar.InvokeIfRequired(() => { progessBar.PerformStep(); });
                                 }
 
                                 filestream.Write(frame.RawData, 0, frame.RawData.Length);
@@ -129,8 +147,9 @@ namespace AudioSlicer
         private void CreateWriter()
         {
             filestream?.Close();
-            //todo calculate the numbers of files to determine a better format
-            filestream = File.Open(Path.Combine(destinationPath, $"{(++counter).ToString($"D{digits}")}.mp3"), FileMode.OpenOrCreate);
+            var name = $"{(++counter).ToString($"D{digits}")}.mp3";
+            infoLabel.InvokeIfRequired(() => { infoLabel.Text = name; });
+            filestream = File.Open(Path.Combine(destinationPath, name), FileMode.OpenOrCreate);
         }
 
         private int GetLastPart(FileStream writer)
@@ -144,8 +163,7 @@ namespace AudioSlicer
             }
             return result;
         }
-
-
-
     }
+
+
 }

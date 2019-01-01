@@ -1,24 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
-using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace AudioSlicer
 {
     public partial class Form1 : Form
     {
-
         List<string> mp3Files = new List<string>();
         string destination;
+        int interval = 3;
         public Form1()
         {
             InitializeComponent();
+            labelInfo.Text = "";
         }
 
         private void textBox1_DragDrop(object sender, DragEventArgs e)
@@ -70,7 +67,7 @@ namespace AudioSlicer
 
         private void button1_Click(object sender, EventArgs e)
         {
-            var audio = new AudioSlice(mp3Files, destination, progressBar1);
+            var audio = new AudioSlice(mp3Files, destination, progressBar1, labelInfo, interval);
         }
 
         private void Form1_DragEnter(object sender, DragEventArgs e)
@@ -93,5 +90,13 @@ namespace AudioSlicer
         {
             InitDragEnter(e);
         }
+
+        private void trackBar1_ValueChanged(object sender, EventArgs e)
+        {
+            interval = trackBar1.Value;
+            label4.Text = interval.ToString();
+        }
+
+
     }
 }
